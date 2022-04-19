@@ -1,0 +1,46 @@
+#!/bin/bash
+# Based on https://github.com/mdouchement/docker-zoom-us
+
+TK_USER=tk
+
+# do we need to use sudo to start docker containers?
+( id -Gn | grep -q docker ) || SUDO=sudo
+
+USER_UID=$(id -u)
+USER_GID=$(id -g)
+
+XSOCK=/tmp/.X11-unix
+XAUTH=/tmp/.docker.xauth
+
+prepare_docker_env_parameters() {
+  ENV_VARS+=" --env=USER_UID=${USER_UID}"
+  ENV_VARS+=" --env=USER_GID=${USER_GID}"
+  ENV_VARS+=" --env=DISPLAY=unix$DISPLAY"
+  ENV_VARS+=" --env=XAUTHORITY=${XAUTH}"
+  ENV_VARS+=" --env=TZ=$(date +%Z)"
+}
+
+prepare_docker_volume_parameters() {
+  touch ${XAUTH}
+  xauth nlist :0 | sed -e 's/^..../ffff/' | xauth -f ${XAUTH} nmerge -
+
+  VOLUMES+=" --volume=${HOME}/.config/pulse/cookie:/home/${TK_USER}/.config/pulse/cookie"
+  VOLUMES+=" --volume=${XSOCK}:${XSOCK}"
+  VOLUMES+=" --volume=${XAUTH}:${XAUTH}"
+  VOLUMES+=" --volume=/run/user/${USER_UID}/pulse:/run/pulse"
+}
+
+prog=tkbash
+
+prepare_docker_env_parameters
+prepare_docker_volume_parameters
+
+echo "Starting ${prog}..."
+
+TK_EXTRA_DOCKER_ARGUMENTS+=" --group-add $(getent group audio | cut -d: -f3) --log-driver none -v ${PWD}:/app"
+
+${SUDO} docker run --rm -ti \
+  ${ENV_VARS} \
+  ${VOLUMES} \
+  ${TK_EXTRA_DOCKER_ARGUMENTS} \
+  vasilev/tcl-tk:latest ${prog} $@
